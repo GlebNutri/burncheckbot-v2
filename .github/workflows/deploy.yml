@@ -1,0 +1,73 @@
+name: Deploy to TimeWeb
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to TimeWeb server
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.TIMEWEB_HOST }}
+          username: ${{ secrets.TIMEWEB_USERNAME }}
+          key: ${{ secrets.TIMEWEB_SSH_KEY }}
+          port: ${{ secrets.TIMEWEB_PORT }}
+          script: |
+            echo "🚀 Начинаем деплой бота на TimeWeb..."
+            
+            # Переход в директорию проекта
+            cd /root/burncheckbot-v2
+            
+            # Остановка бота перед обновлением
+            echo "🛑 Остановка бота..."
+            supervisorctl stop burncheckbot 2>/dev/null || true
+            pkill -f "python.*bot.py" 2>/dev/null || true
+            
+            # Обновление кода
+            echo "📥 Обновление кода..."
+            git pull origin main
+            
+            # Активация виртуального окружения
+            echo "🐍 Активация виртуального окружения..."
+            source venv/bin/activate
+            
+            # Обновление зависимостей
+            echo "📚 Обновление зависимостей..."
+            pip install -r requirements.txt
+            
+            # Проверка наличия .env файла
+            if [ ! -f ".env" ]; then
+              echo "❌ Файл .env не найден! Создайте его с токеном бота."
+              exit 1
+            fi
+            
+            # Запуск бота
+            echo "🚀 Запуск бота..."
+            supervisorctl start burncheckbot
+            
+            # Проверка статуса
+            echo "📊 Проверка статуса..."
+            sleep 5
+            supervisorctl status burncheckbot
+            
+            echo "✅ Деплой завершен!"
+            
+      - name: Check deployment status
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.TIMEWEB_HOST }}
+          username: ${{ secrets.TIMEWEB_USERNAME }}
+          key: ${{ secrets.TIMEWEB_SSH_KEY }}
+          port: ${{ secrets.TIMEWEB_PORT }}
+          script: |
+            echo "🔍 Проверка статуса бота..."
+            supervisorctl status burncheckbot
+            
+            echo "📝 Последние логи:"
+            tail -10 /var/log/burncheckbot.out.log || echo "Логи пока пусты"
+            
+            echo "❌ Последние ошибки:"
+            tail -10 /var/log/burncheckbot.err.log || echo "Ошибок нет" 
