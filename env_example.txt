@@ -1,0 +1,17 @@
+# Токен вашего Telegram бота
+# Получите его у @BotFather в Telegram
+BOT_TOKEN=your_bot_token_here
+
+# Настройки канала для подписки
+# Username канала без символа @ (например: my_channel)
+CHANNEL_USERNAME=your_channel_username
+
+# Ссылка на канал (например: https://t.me/my_channel)
+CHANNEL_LINK=https://t.me/your_channel
+
+# Название канала для отображения
+CHANNEL_NAME=Психология и саморазвитие
+
+# Отключение проверки подписки (true/false)
+# Установите true для тестирования без настройки канала
+DISABLE_SUBSCRIPTION_CHECK=false 
