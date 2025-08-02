@@ -55,14 +55,7 @@ show_help() {
 local_management() {
     local command="$1"
     
-    # Проверяем, есть ли единый скрипт управления
-    if [ -f "bot_manager_unified.sh" ]; then
-        log_message "${GREEN}✅ Используем единый скрипт управления${NC}"
-        ./bot_manager_unified.sh "$command"
-    else
-        log_message "${YELLOW}⚠️ Единый скрипт не найден, используем базовые команды${NC}"
-        
-        case "$command" in
+    case "$command" in
             start)
                 log_message "${YELLOW}🚀 Запуск бота...${NC}"
                 nohup python3 bot.py > output.log 2>&1 &
@@ -213,7 +206,6 @@ EOF
                 exit 1
                 ;;
         esac
-    fi
 }
 
 # Функция для удаленного управления
@@ -245,37 +237,242 @@ remote_management() {
     case "$command" in
         update)
             log_message "${BLUE}📥 Обновление бота на сервере...${NC}"
-            ssh -i "$ssh_key" -o StrictHostKeyChecking=no root@"$server_ip" << EOF
-cd /root/burncheckbot-v2
-./bot_manager.sh local update
+            ssh -i "$ssh_key" -o StrictHostKeyChecking=no root@"$server_ip" << 'EOF'
+# Цвета для вывода на сервере
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+log_message() {
+    echo -e "${BLUE}[$(date '+%Y-%m-%d %H:%M:%S')]${NC} $1"
+}
+
+BOT_DIR="/root/burncheckbot-v2"
+
+log_message "${YELLOW}📥 Обновление бота на сервере...${NC}"
+
+# Переходим в директорию бота
+cd "$BOT_DIR" || {
+    log_message "${RED}❌ Директория $BOT_DIR не найдена${NC}"
+    exit 1
+}
+
+# Останавливаем бота перед обновлением
+log_message "${BLUE}🛑 Останавливаем бота для обновления...${NC}"
+pkill -9 -f "python.*bot.py" 2>/dev/null || true
+supervisorctl stop burncheckbot 2>/dev/null || true
+
+# Обновляем код
+log_message "${BLUE}📥 Обновление кода с git...${NC}"
+git fetch origin
+git reset --hard origin/main
+
+# Обновляем зависимости
+log_message "${BLUE}📚 Обновление зависимостей...${NC}"
+source venv/bin/activate
+pip install -r requirements.txt
+
+# Делаем скрипт исполняемым
+chmod +x bot_manager.sh
+
+# Запускаем бота
+log_message "${BLUE}🚀 Запуск бота...${NC}"
+if [ -f "bot_manager.sh" ]; then
+    ./bot_manager.sh local start
+else
+    supervisorctl start burncheckbot
+fi
+
+log_message "${GREEN}✅ Обновление завершено${NC}"
 EOF
             ;;
         deploy)
             log_message "${BLUE}🚀 Полный деплой бота на сервер...${NC}"
-            ssh -i "$ssh_key" -o StrictHostKeyChecking=no root@"$server_ip" << EOF
-cd /root/burncheckbot-v2
-./bot_manager.sh local deploy
+            ssh -i "$ssh_key" -o StrictHostKeyChecking=no root@"$server_ip" << 'EOF'
+# Цвета для вывода на сервере
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+log_message() {
+    echo -e "${BLUE}[$(date '+%Y-%m-%d %H:%M:%S')]${NC} $1"
+}
+
+BOT_DIR="/root/burncheckbot-v2"
+
+log_message "${YELLOW}🤖 Начинаем деплой бота на сервер...${NC}"
+
+# Проверка наличия необходимых файлов (если уже есть проект)
+if [ -d "$BOT_DIR" ]; then
+    log_message "${BLUE}📁 Проект уже существует, обновляем...${NC}"
+    cd "$BOT_DIR"
+    
+    # Останавливаем существующие процессы
+    log_message "${BLUE}🛑 Останавливаем существующие процессы...${NC}"
+    pkill -9 -f "python.*bot.py" 2>/dev/null || true
+    supervisorctl stop burncheckbot 2>/dev/null || true
+    
+    # Обновляем код
+    log_message "${BLUE}📥 Обновление кода с git...${NC}"
+    git fetch origin
+    git reset --hard origin/main
+    
+    # Обновляем зависимости
+    log_message "${BLUE}📚 Обновление зависимостей...${NC}"
+    source venv/bin/activate
+    pip install -r requirements.txt
+    
+else
+    log_message "${BLUE}📁 Создание нового проекта...${NC}"
+    
+    # Обновление системы
+    log_message "${BLUE}📦 Обновление системы...${NC}"
+    apt update && apt upgrade -y
+    
+    # Установка зависимостей
+    log_message "${BLUE}🔧 Установка Python и зависимостей...${NC}"
+    apt install python3 python3-pip python3-venv git supervisor -y
+    
+    # Создание директории проекта
+    log_message "${BLUE}📁 Создание директории проекта...${NC}"
+    mkdir -p "$BOT_DIR"
+    cd "$BOT_DIR"
+    
+    # Клонирование репозитория
+    log_message "${BLUE}📥 Клонирование репозитория...${NC}"
+    git clone https://github.com/GlebNutri/burncheckbot-v2.git .
+    
+    # Создание виртуального окружения
+    log_message "${BLUE}🐍 Создание виртуального окружения...${NC}"
+    python3 -m venv venv
+    source venv/bin/activate
+    
+    # Установка зависимостей
+    log_message "${BLUE}📚 Установка зависимостей Python...${NC}"
+    pip install -r requirements.txt
+    
+    # Создание конфигурации Supervisor
+    log_message "${BLUE}⚙️ Настройка автозапуска...${NC}"
+    cat > /etc/supervisor/conf.d/burncheckbot.conf << SUPERVISOR_EOF
+[program:burncheckbot]
+command=$BOT_DIR/venv/bin/python $BOT_DIR/bot.py
+directory=$BOT_DIR
+user=root
+autostart=true
+autorestart=true
+stderr_logfile=/var/log/burncheckbot.err.log
+stdout_logfile=/var/log/burncheckbot.out.log
+environment=PYTHONPATH="$BOT_DIR"
+SUPERVISOR_EOF
+    
+    # Перезапуск Supervisor
+    log_message "${BLUE}🔄 Перезапуск Supervisor...${NC}"
+    supervisorctl reread
+    supervisorctl update
+fi
+
+# Делаем скрипты исполняемыми
+chmod +x bot_manager.sh bot_manager_unified.sh
+
+# Запускаем бота через новый скрипт (если есть)
+if [ -f "bot_manager.sh" ]; then
+    log_message "${BLUE}🚀 Запуск бота через новый скрипт управления...${NC}"
+    ./bot_manager.sh local start
+else
+    log_message "${BLUE}🚀 Запуск бота через supervisor...${NC}"
+    supervisorctl start burncheckbot
+fi
+
+# Проверка статуса
+log_message "${BLUE}📊 Проверка статуса...${NC}"
+sleep 3
+
+if [ -f "bot_manager.sh" ]; then
+    ./bot_manager.sh local status
+else
+    supervisorctl status burncheckbot
+fi
+
+log_message "${GREEN}✅ Деплой завершен!${NC}"
+log_message "${BLUE}📝 Логи бота:${NC}"
+log_message "${BLUE}   - Стандартный вывод: tail -f /var/log/burncheckbot.out.log${NC}"
+log_message "${BLUE}   - Ошибки: tail -f /var/log/burncheckbot.err.log${NC}"
+log_message "${BLUE}🔄 Управление:${NC}"
+if [ -f "bot_manager.sh" ]; then
+    log_message "${BLUE}   - Статус: ./bot_manager.sh local status${NC}"
+    log_message "${BLUE}   - Перезапуск: ./bot_manager.sh local restart${NC}"
+    log_message "${BLUE}   - Остановка: ./bot_manager.sh local stop${NC}"
+else
+    log_message "${BLUE}   - Статус: supervisorctl status burncheckbot${NC}"
+    log_message "${BLUE}   - Перезапуск: supervisorctl restart burncheckbot${NC}"
+    log_message "${BLUE}   - Остановка: supervisorctl stop burncheckbot${NC}"
+fi
 EOF
             ;;
         status)
             log_message "${BLUE}📊 Статус бота на сервере...${NC}"
-            ssh -i "$ssh_key" -o StrictHostKeyChecking=no root@"$server_ip" << EOF
-cd /root/burncheckbot-v2
-./bot_manager.sh local status
+            ssh -i "$ssh_key" -o StrictHostKeyChecking=no root@"$server_ip" << 'EOF'
+BOT_DIR="/root/burncheckbot-v2"
+cd "$BOT_DIR" 2>/dev/null || {
+    echo "❌ Директория $BOT_DIR не найдена"
+    exit 1
+}
+
+if [ -f "bot_manager.sh" ]; then
+    ./bot_manager.sh local status
+else
+    echo "📊 Статус бота:"
+    if supervisorctl status burncheckbot 2>/dev/null | grep -q "RUNNING"; then
+        echo "✅ Бот запущен"
+        supervisorctl status burncheckbot
+    else
+        echo "❌ Бот не запущен"
+    fi
+fi
 EOF
             ;;
         logs)
             log_message "${BLUE}📋 Логи бота на сервере...${NC}"
-            ssh -i "$ssh_key" -o StrictHostKeyChecking=no root@"$server_ip" << EOF
-cd /root/burncheckbot-v2
-./bot_manager.sh local logs
+            ssh -i "$ssh_key" -o StrictHostKeyChecking=no root@"$server_ip" << 'EOF'
+BOT_DIR="/root/burncheckbot-v2"
+cd "$BOT_DIR" 2>/dev/null || {
+    echo "❌ Директория $BOT_DIR не найдена"
+    exit 1
+}
+
+if [ -f "bot_manager.sh" ]; then
+    ./bot_manager.sh local logs
+else
+    echo "📋 Логи бота:"
+    echo "📄 Последние 50 строк лога:"
+    tail -n 50 output.log 2>/dev/null || echo "Файл лога не найден"
+    echo ""
+    echo "🔍 Supervisor логи:"
+    echo "   Стандартный вывод: tail -f /var/log/burncheckbot.out.log"
+    echo "   Ошибки: tail -f /var/log/burncheckbot.err.log"
+fi
 EOF
             ;;
         restart)
             log_message "${BLUE}🔄 Перезапуск бота на сервере...${NC}"
-            ssh -i "$ssh_key" -o StrictHostKeyChecking=no root@"$server_ip" << EOF
-cd /root/burncheckbot-v2
-./bot_manager.sh local restart
+            ssh -i "$ssh_key" -o StrictHostKeyChecking=no root@"$server_ip" << 'EOF'
+BOT_DIR="/root/burncheckbot-v2"
+cd "$BOT_DIR" 2>/dev/null || {
+    echo "❌ Директория $BOT_DIR не найдена"
+    exit 1
+}
+
+if [ -f "bot_manager.sh" ]; then
+    ./bot_manager.sh local restart
+else
+    echo "🔄 Перезапуск бота..."
+    supervisorctl restart burncheckbot
+    echo "✅ Перезапуск завершен"
+fi
 EOF
             ;;
         *)
