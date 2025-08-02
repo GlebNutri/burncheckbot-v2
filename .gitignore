@@ -41,8 +41,8 @@ ENV/
 .DS_Store
 Thumbs.db
 
-# Fonts - игнорируем большие файлы шрифтов, но оставляем папку
-evolventa/*.ttf
-evolventa/*.otf
-evolventa/*.woff
-evolventa/*.woff2 
+# Fonts - включаем шрифты в репозиторий
+# evolventa/*.ttf
+# evolventa/*.otf
+# evolventa/*.woff
+# evolventa/*.woff2 
