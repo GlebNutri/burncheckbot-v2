@@ -8,6 +8,10 @@ scp bot.py root@46.149.70.11:/root/burncheckbot-v2/
 scp config.py root@46.149.70.11:/root/burncheckbot-v2/
 scp env_example.txt root@46.149.70.11:/root/burncheckbot-v2/
 
+# Копируем папку со шрифтами
+echo "🔤 Копируем шрифты..."
+scp -r evolventa/ root@46.149.70.11:/root/burncheckbot-v2/
+
 # Подключаемся к серверу и перезапускаем бота
 echo "🔄 Перезапускаем бота..."
 ssh root@46.149.70.11 << 'EOF'
@@ -30,12 +34,12 @@ sleep 3
 if pgrep -f "python3 bot.py" > /dev/null; then
     echo "✅ Бот успешно запущен!"
     echo "📊 PID: $(pgrep -f 'python3 bot.py')"
+    echo "📝 Логи: tail -f output.log"
 else
-    echo "❌ Ошибка запуска бота!"
+    echo "❌ Ошибка запуска бота"
     echo "📋 Последние логи:"
-    tail -n 20 output.log
+    tail -n 10 output.log
 fi
 EOF
 
-echo "🎉 Развертывание завершено!"
-echo "📝 Проверьте логи: ssh root@46.149.70.11 'tail -f /root/burncheckbot-v2/output.log'" 
+echo "🎉 Развертывание завершено!" 

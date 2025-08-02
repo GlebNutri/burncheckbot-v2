@@ -924,29 +924,33 @@ async def generate_certificate(user_name: str, total_score: int, level: str, com
         raise
     draw = ImageDraw.Draw(image)
 
-    # Шрифты с fallback для разных систем
+    # Шрифты с приоритетом на Evolventa из папки проекта
     try:
-        # Пробуем стандартные шрифты Linux (для Render)
-        font_nick = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 48)
-        font_level = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 44)
-        font_date = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 44)
+        # Пробуем шрифт Evolventa из папки проекта
+        font_nick = ImageFont.truetype("evolventa/Evolventa-Regular.ttf", 48)
+        font_level = ImageFont.truetype("evolventa/Evolventa-Regular.ttf", 44)
+        font_date = ImageFont.truetype("evolventa/Evolventa-Regular.ttf", 44)
+        logger.info("Используется шрифт Evolventa из папки проекта")
     except:
         try:
-            # Fallback на стандартные шрифты macOS
-            font_nick = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 48)
-            font_level = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 44)
-            font_date = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 44)
+            # Fallback на стандартные шрифты Linux (для сервера)
+            font_nick = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 48)
+            font_level = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 44)
+            font_date = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 44)
+            logger.info("Используется системный шрифт Linux")
         except:
             try:
-                # Пробуем пользовательский шрифт
-                font_nick = ImageFont.truetype("/Users/user/Library/Fonts/Evolventa-Regular.ttf", 48)
-                font_level = ImageFont.truetype("/Users/user/Library/Fonts/Evolventa-Regular.ttf", 44)
-                font_date = ImageFont.truetype("/Users/user/Library/Fonts/Evolventa-Regular.ttf", 44)
+                # Fallback на стандартные шрифты macOS
+                font_nick = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 48)
+                font_level = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 44)
+                font_date = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 44)
+                logger.info("Используется системный шрифт macOS")
             except:
                 # Последний fallback - используем дефолтный шрифт
                 font_nick = ImageFont.load_default()
                 font_level = ImageFont.load_default()
                 font_date = ImageFont.load_default()
+                logger.warning("Используется дефолтный шрифт - Evolventa не найден")
 
     # Новые координаты для вставки текста
     nick_xy = (360, 610)         # Под надписью «Выдана»

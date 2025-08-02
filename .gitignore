@@ -39,4 +39,10 @@ ENV/
 
 # OS
 .DS_Store
-Thumbs.db 
+Thumbs.db
+
+# Fonts - игнорируем большие файлы шрифтов, но оставляем папку
+evolventa/*.ttf
+evolventa/*.otf
+evolventa/*.woff
+evolventa/*.woff2 
