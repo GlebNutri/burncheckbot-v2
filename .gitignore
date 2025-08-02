@@ -4,6 +4,7 @@
 # Python
 __pycache__/
 *.py[cod]
+*.py[cod]
 *$py.class
 *.so
 .Python
@@ -36,6 +37,7 @@ ENV/
 
 # Logs
 *.log
+output.log
 
 # OS
 .DS_Store
