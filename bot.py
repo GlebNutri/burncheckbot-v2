@@ -927,9 +927,9 @@ async def generate_certificate(user_name: str, total_score: int, level: str, com
     # Шрифты с приоритетом на Evolventa из папки проекта
     try:
         # Пробуем шрифт Evolventa из папки проекта
-        font_nick = ImageFont.truetype("evolventa/Evolventa-Regular.ttf", 48)
-        font_level = ImageFont.truetype("evolventa/Evolventa-Regular.ttf", 44)
-        font_date = ImageFont.truetype("evolventa/Evolventa-Regular.ttf", 44)
+        font_nick = ImageFont.truetype("evolventa/ttf/Evolventa-Regular.ttf", 48)
+        font_level = ImageFont.truetype("evolventa/ttf/Evolventa-Regular.ttf", 44)
+        font_date = ImageFont.truetype("evolventa/ttf/Evolventa-Regular.ttf", 44)
         logger.info("Используется шрифт Evolventa из папки проекта")
     except:
         try:

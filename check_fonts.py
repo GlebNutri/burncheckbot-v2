@@ -10,7 +10,7 @@ def check_fonts():
     """Проверяет доступность различных шрифтов"""
     
     fonts_to_check = [
-        ("evolventa/Evolventa-Regular.ttf", "Evolventa из папки проекта"),
+        ("evolventa/ttf/Evolventa-Regular.ttf", "Evolventa из папки проекта"),
         ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "Системный Linux"),
         ("/System/Library/Fonts/Helvetica.ttc", "Системный macOS"),
     ]
