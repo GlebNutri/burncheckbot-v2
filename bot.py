@@ -1,6 +1,7 @@
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
+from collections import defaultdict
 from dotenv import load_dotenv
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -73,6 +74,124 @@ ASK_NAME, CHOOSING_PHASE, ANSWERING_QUESTIONS, CHECKING_SUBSCRIPTION, SHOWING_RE
 
 # Хранилище ответов пользователей
 user_answers = {}
+
+# Хранилище статистики
+stats_data = {
+    'total_users': 0,
+    'completed_tests': 0,
+    'test_results': defaultdict(int),  # Уровни выгорания
+    'daily_stats': defaultdict(int),   # Статистика по дням
+    'user_sessions': defaultdict(list) # Сессии пользователей
+}
+
+# ID администратора (ваш ID)
+ADMIN_ID = 156568560  # Замените на ваш ID
+
+def update_stats(user_id: int, action: str, data: dict = None):
+    """Обновление статистики"""
+    today = datetime.now().strftime('%Y-%m-%d')
+    
+    # Увеличиваем счетчик действий
+    stats_data['daily_stats'][today] += 1
+    
+    # Записываем сессию пользователя
+    session_data = {
+        'timestamp': datetime.now(),
+        'action': action,
+        'data': data
+    }
+    stats_data['user_sessions'][user_id].append(session_data)
+    
+    # Если это завершение теста, обновляем статистику результатов
+    if action == 'test_completed' and data:
+        stats_data['completed_tests'] += 1
+        level = data.get('level', 'unknown')
+        stats_data['test_results'][level] += 1
+
+async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Команда статистики (только для администратора)"""
+    user_id = update.effective_user.id
+    
+    # Проверяем, является ли пользователь администратором
+    if user_id != ADMIN_ID:
+        await update.message.reply_text("❌ У вас нет доступа к этой команде.")
+        return
+    
+    # Получаем статистику за последние 7 дней
+    today = datetime.now()
+    week_ago = today - timedelta(days=7)
+    
+    stats_text = "📊 *Общая статистика бота*\n\n"
+    
+    # Общая статистика
+    total_actions = sum(stats_data['daily_stats'].values())
+    total_users = len(stats_data['user_sessions'])
+    completed_tests = stats_data['completed_tests']
+    
+    stats_text += f"🎯 *Общие показатели:*\n"
+    stats_text += f"• Всего действий: {total_actions}\n"
+    stats_text += f"• Уникальных пользователей: {total_users}\n"
+    stats_text += f"• Завершенных тестов: {completed_tests}\n"
+    
+    # Процент завершения тестов
+    if total_users > 0:
+        completion_rate = (completed_tests / total_users) * 100
+        stats_text += f"• Процент завершения: {completion_rate:.1f}%\n"
+    
+    # Средние показатели выгорания
+    if stats_data['test_results']:
+        stats_text += "\n🔥 *Результаты тестов:*\n"
+        
+        # Подсчитываем общую статистику по уровням
+        total_tests = sum(stats_data['test_results'].values())
+        level_scores = {
+            "Маленький Пиздец": 1,
+            "Средний Пиздец": 2, 
+            "Большой Пиздец": 3
+        }
+        
+        total_score = 0
+        for level, count in stats_data['test_results'].items():
+            score = level_scores.get(level, 0)
+            total_score += score * count
+            percentage = (count / total_tests) * 100 if total_tests > 0 else 0
+            stats_text += f"• {level}: {count} чел. ({percentage:.1f}%)\n"
+        
+        # Средний уровень выгорания
+        if total_tests > 0:
+            avg_level = total_score / total_tests
+            if avg_level <= 1.5:
+                avg_level_name = "Маленький Пиздец"
+            elif avg_level <= 2.5:
+                avg_level_name = "Средний Пиздец"
+            else:
+                avg_level_name = "Большой Пиздец"
+            
+            stats_text += f"\n📈 *Средний уровень выгорания:* {avg_level_name}\n"
+            stats_text += f"📊 *Средний балл:* {avg_level:.2f}/3.00\n"
+    
+    # Статистика по дням
+    stats_text += "\n📅 *Активность за последние 7 дней:*\n"
+    for i in range(7):
+        date = (today - timedelta(days=i)).strftime('%Y-%m-%d')
+        count = stats_data['daily_stats'].get(date, 0)
+        day_name = (today - timedelta(days=i)).strftime('%d.%m')
+        stats_text += f"• {day_name}: {count} действий\n"
+    
+    # Последние активности
+    stats_text += "\n🕐 *Последние активности:*\n"
+    recent_sessions = []
+    for user_id, sessions in stats_data['user_sessions'].items():
+        if sessions:
+            recent_sessions.extend([(s['timestamp'], user_id, s['action']) for s in sessions])
+    
+    # Сортируем по времени и берем последние 5
+    recent_sessions.sort(key=lambda x: x[0], reverse=True)
+    for timestamp, user_id, action in recent_sessions[:5]:
+        time_str = timestamp.strftime('%H:%M')
+        stats_text += f"• {time_str} - Пользователь {user_id}: {action}\n"
+    
+    await update.message.reply_text(stats_text, parse_mode='Markdown')
 
 async def check_subscription(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
     """Проверка подписки пользователя на канал"""
@@ -274,6 +393,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     user_id = update.effective_user.id
     logger.info(f"User ID: {user_id}")
     
+    # Обновляем статистику
+    update_stats(user_id, 'start_command')
+    
     # Очищаем предыдущие ответы и данные пользователя
     if user_id in user_answers:
         logger.info(f"Удаляем старые ответы для пользователя {user_id}")
@@ -345,6 +467,9 @@ async def start_phase_selection(update: Update, context: ContextTypes.DEFAULT_TY
         # Проверяем, что это полный тест
         if query.data == "full_test":
             user_id = update.effective_user.id
+            
+            # Обновляем статистику выбора полного теста
+            update_stats(user_id, 'full_test_selected')
             
             # Проверяем, есть ли уже имя пользователя
             if 'full_name' not in context.user_data:
@@ -473,6 +598,10 @@ async def handle_answer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     await query.answer()
     
     user_id = update.effective_user.id
+    
+    # Обновляем статистику ответа на вопрос
+    update_stats(user_id, 'question_answered')
+    
     # Проверка формата callback_data
     if not query.data or not query.data.startswith("answer_"):
         await query.edit_message_text(
@@ -612,8 +741,17 @@ async def show_results(update: Update, context: ContextTypes.DEFAULT_TYPE, gener
     
     results_text += "\n\n💡 *Рекомендации:*\n"
     
-    # Определяем, является ли это полным тестом
+    # Определяем, является ли это полным тест
     is_full_test = completed_phases == 3
+    
+    # Обновляем статистику завершения теста
+    if is_full_test:
+        level_name = "Маленький Пиздец" if total_score <= 15 else "Средний Пиздец" if total_score <= 20 else "Большой Пиздец"
+        update_stats(user_id, 'test_completed', {
+            'level': level_name,
+            'total_score': total_score,
+            'completed_phases': completed_phases
+        })
     
     # Определяем общий уровень для рекомендаций
     if is_full_test and completed_phases == 3:
@@ -981,6 +1119,7 @@ def main() -> None:
     
     application.add_handler(conv_handler)
     application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("stats", stats_command))
     application.add_error_handler(error_handler)
     
     # Запускаем бота
