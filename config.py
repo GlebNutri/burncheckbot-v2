@@ -7,9 +7,9 @@ load_dotenv()
 BOT_TOKEN = os.getenv('BOT_TOKEN', 'YOUR_BOT_TOKEN_HERE')
 
 # Настройки канала для подписки
-CHANNEL_USERNAME = os.getenv('CHANNEL_USERNAME', '@your_channel')  # Без @
-CHANNEL_LINK = os.getenv('CHANNEL_LINK', 'https://t.me/your_channel')
-CHANNEL_NAME = os.getenv('CHANNEL_NAME', 'Психология и саморазвитие')
+CHANNEL_USERNAME = os.getenv('CHANNEL_USERNAME', '@wtfcrisis30')  # Без @
+CHANNEL_LINK = os.getenv('CHANNEL_LINK', 'https://t.me/wtfcrisis30')
+CHANNEL_NAME = os.getenv('CHANNEL_NAME', 'Кризис Тридцатилетних')
 
 # Отключение проверки подписки (для тестирования)
 DISABLE_SUBSCRIPTION_CHECK = os.getenv('DISABLE_SUBSCRIPTION_CHECK', 'false').lower() == 'true'

@@ -4,13 +4,13 @@ BOT_TOKEN=your_bot_token_here
 
 # Настройки канала для подписки
 # Username канала без символа @ (например: my_channel)
-CHANNEL_USERNAME=your_channel_username
+CHANNEL_USERNAME=wtfcrisis30
 
 # Ссылка на канал (например: https://t.me/my_channel)
-CHANNEL_LINK=https://t.me/your_channel
+CHANNEL_LINK=https://t.me/wtfcrisis30
 
 # Название канала для отображения
-CHANNEL_NAME=Психология и саморазвитие
+CHANNEL_NAME=Кризис Тридцатилетних
 
 # Отключение проверки подписки (true/false)
 # Установите true для тестирования без настройки канала
