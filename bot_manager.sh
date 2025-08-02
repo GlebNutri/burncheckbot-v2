@@ -274,8 +274,10 @@ log_message "${BLUE}📚 Обновление зависимостей...${NC}"
 source venv/bin/activate
 pip install -r requirements.txt
 
-# Делаем скрипт исполняемым
-chmod +x bot_manager.sh
+# Делаем скрипт исполняемым (если существует)
+if [ -f "bot_manager.sh" ]; then
+    chmod +x bot_manager.sh
+fi
 
 # Запускаем бота
 log_message "${BLUE}🚀 Запуск бота...${NC}"
