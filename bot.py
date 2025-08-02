@@ -138,6 +138,8 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         completion_rate = (completed_tests / total_users) * 100
         stats_text += f"• Процент завершения: {completion_rate:.1f}%\n"
     
+
+    
     # Средние показатели выгорания
     if stats_data['test_results']:
         stats_text += "\n🔥 *Результаты тестов:*\n"
@@ -189,9 +191,17 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     recent_sessions.sort(key=lambda x: x[0], reverse=True)
     for timestamp, user_id, action in recent_sessions[:5]:
         time_str = timestamp.strftime('%H:%M')
-        stats_text += f"• {time_str} - Пользователь {user_id}: {action}\n"
+        # Экранируем потенциально проблемные символы в action
+        safe_action = action.replace('*', '\\*').replace('_', '\\_')
+        stats_text += f"• {time_str} - Пользователь {user_id}: {safe_action}\n"
     
-    await update.message.reply_text(stats_text, parse_mode='Markdown')
+    try:
+        await update.message.reply_text(stats_text, parse_mode='Markdown')
+    except Exception as e:
+        logger.error(f"Ошибка при отправке статистики: {e}")
+        # Пробуем отправить без Markdown
+        stats_text_plain = stats_text.replace('*', '').replace('_', '')
+        await update.message.reply_text(stats_text_plain)
 
 async def check_subscription(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
     """Проверка подписки пользователя на канал"""
