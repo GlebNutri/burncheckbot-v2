@@ -17,11 +17,56 @@ from config import (
 )
 
 # Настройка логирования
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.DEBUG
+import logging.handlers
+
+# Создаем директорию для логов если её нет
+log_dir = '/var/log/burncheckbot'
+os.makedirs(log_dir, exist_ok=True)
+
+# Настройка форматирования
+formatter = logging.Formatter(
+    '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
 )
+
+# Создаем логгер
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+
+# Очищаем существующие обработчики
+logger.handlers.clear()
+
+# Файловый обработчик для всех логов
+file_handler = logging.handlers.RotatingFileHandler(
+    f'{log_dir}/bot.log',
+    maxBytes=10*1024*1024,  # 10MB
+    backupCount=5,
+    encoding='utf-8'
+)
+file_handler.setLevel(logging.DEBUG)
+file_handler.setFormatter(formatter)
+logger.addHandler(file_handler)
+
+# Файловый обработчик только для ошибок
+error_handler = logging.handlers.RotatingFileHandler(
+    f'{log_dir}/bot_errors.log',
+    maxBytes=5*1024*1024,  # 5MB
+    backupCount=3,
+    encoding='utf-8'
+)
+error_handler.setLevel(logging.ERROR)
+error_handler.setFormatter(formatter)
+logger.addHandler(error_handler)
+
+# Консольный обработчик для отладки
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
+
+# Логируем запуск
+logger.info("🤖 Бот запускается...")
+logger.info(f"Версия: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
 # Состояния разговора
 ASK_NAME, CHOOSING_PHASE, ANSWERING_QUESTIONS, CHECKING_SUBSCRIPTION, SHOWING_RESULTS = range(5)
