@@ -612,6 +612,9 @@ async def show_results(update: Update, context: ContextTypes.DEFAULT_TYPE, gener
     
     results_text += "\n\n💡 *Рекомендации:*\n"
     
+    # Определяем, является ли это полным тестом
+    is_full_test = completed_phases == 3
+    
     # Определяем общий уровень для рекомендаций
     if is_full_test and completed_phases == 3:
         # Для полного теста используем общий балл
