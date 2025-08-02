@@ -342,17 +342,14 @@ async def start_phase_selection(update: Update, context: ContextTypes.DEFAULT_TY
         query = update.callback_query
         await query.answer()
         
-        # Проверяем, что это выбор фазы, а не просто показ меню
-        if query.data and (query.data.startswith("phase_") or query.data == "full_test"):
+        # Проверяем, что это полный тест
+        if query.data == "full_test":
             user_id = update.effective_user.id
             
             # Проверяем, есть ли уже имя пользователя
             if 'full_name' not in context.user_data:
-                # Сохраняем выбранную фазу и запрашиваем имя
-                if query.data == "full_test":
-                    context.user_data['selected_test'] = "full_test"
-                else:
-                    context.user_data['selected_test'] = f"phase_{query.data.split('_')[1]}"
+                # Запрашиваем имя
+                context.user_data['selected_test'] = "full_test"
                 
                 intro = (
                     "Напиши свое Фамилию и Имя, они нужны для генерации персонализированного подарка тебе за прохождение теста.\n"
@@ -362,26 +359,14 @@ async def start_phase_selection(update: Update, context: ContextTypes.DEFAULT_TY
                 await query.edit_message_text(intro)
                 return ASK_NAME
             
-            # Если имя уже есть, начинаем тест
-            if query.data == "full_test":
-                # Инициализируем ответы для полного теста
-                user_answers[user_id] = {
-                    "current_phase": 0,
-                    "current_question": 0,
-                    "answers": {},
-                    "full_test": True
-                }
-                return await start_questions(update, context)
-            else:
-                # Тестирование одной фазы
-                phase_index = int(query.data.split("_")[1])
-                user_answers[user_id] = {
-                    "current_phase": phase_index,
-                    "current_question": 0,
-                    "answers": {},
-                    "full_test": False
-                }
-                return await start_questions(update, context)
+            # Если имя уже есть, начинаем полный тест
+            user_answers[user_id] = {
+                "current_phase": 0,
+                "current_question": 0,
+                "answers": {},
+                "full_test": True
+            }
+            return await start_questions(update, context)
         
         send_func = query.edit_message_text
     else:
@@ -406,15 +391,9 @@ async def start_phase_selection(update: Update, context: ContextTypes.DEFAULT_TY
 
 😵 **Истощение** - Всё. Пусто. Ни эмоций, ни сил. Утро начинается с вопроса: «Зачем всё это?». Ты просто существуешь на автомате. Энергии нет даже на удовольствие. Это не лень. Это ты выгорел.
 
-Выбери подходящую для себя фазу или пройди полный тест:
+Начинаем тест:
 """
-    keyboard = []
-    for i, phase_data in enumerate(TEST_QUESTIONS):
-        keyboard.append([InlineKeyboardButton(
-            phase_data["phase"], 
-            callback_data=f"phase_{i}"
-        )])
-    keyboard.append([InlineKeyboardButton("📊 Пройти полный тест", callback_data="full_test")])
+    keyboard = [[InlineKeyboardButton("📊 Пройти тест (30 вопросов)", callback_data="full_test")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     logger.info(f"Отправляем сообщение через: {send_func}")
@@ -458,10 +437,15 @@ async def start_questions(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     phase_index = user_answers[user_id]["current_phase"]
     phase_data = TEST_QUESTIONS[phase_index]
     
+    # Определяем общий номер вопроса для полного теста
+    total_question_number = 1
+    for i in range(phase_index):
+        total_question_number += len(TEST_QUESTIONS[i]['questions'])
+    
     question_text = f"""
 📝 *Тестирование фазы: {phase_data['phase']}*
 
-Вопрос 1 из {len(phase_data['questions'])}:
+Вопрос {total_question_number} из 30:
 
 {phase_data['questions'][0]}
 """
@@ -522,10 +506,17 @@ async def handle_answer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     if user_answers[user_id]["current_question"] < len(phase_data['questions']):
         # Показываем следующий вопрос
         next_question = user_answers[user_id]["current_question"]
+        
+        # Определяем общий номер вопроса для полного теста
+        total_question_number = 1
+        for i in range(phase_index):
+            total_question_number += len(TEST_QUESTIONS[i]['questions'])
+        total_question_number += next_question
+        
         question_text = f"""
 📝 *Тестирование фазы: {phase_data['phase']}*
 
-Вопрос {next_question + 1} из {len(phase_data['questions'])}:
+Вопрос {total_question_number} из 30:
 
 {phase_data['questions'][next_question]}
 """
@@ -609,44 +600,15 @@ async def show_results(update: Update, context: ContextTypes.DEFAULT_TYPE, gener
             # Фаза не пройдена полностью
             results_text += f"🔸 *{phase_name}:* не пройдена\n\n"
     
-    # Определяем тип тестирования
-    is_full_test = user_answers[user_id].get("full_test", False)
+    # Полный тест пройден
+    results_text += f"📈 *Общий балл:* {total_score}/30\n\n"
     
-    if is_full_test and completed_phases == 3:
-        # Полный тест пройден
-        results_text += f"📈 *Общий балл:* {total_score}/30\n\n"
-        
-        if total_score <= 15:
-            results_text += "✅ *Общий результат:* Маленький Пиздец эмоционального выгорания"
-        elif total_score <= 20:
-            results_text += "⚠️ *Общий результат:* Средний Пиздец эмоционального выгорания"
-        else:
-            results_text += "🚨 *Общий результат:* Большой Пиздец эмоционального выгорания"
+    if total_score <= 15:
+        results_text += "✅ *Общий результат:* Маленький Пиздец эмоционального выгорания"
+    elif total_score <= 20:
+        results_text += "⚠️ *Общий результат:* Средний Пиздец эмоционального выгорания"
     else:
-        # Тестирование отдельных фаз
-        if completed_phases == 1:
-            # Пройдена только одна фаза
-            phase_name = list(phase_scores.keys())[0]
-            score = phase_scores[phase_name]
-            results_text += f"📈 *Балл по фазе {phase_name}:* {score}/10\n\n"
-            
-            if score <= 3:
-                results_text += f"✅ *Результат по фазе {phase_name}:* Маленький Пиздец"
-            elif score <= 6:
-                results_text += f"⚠️ *Результат по фазе {phase_name}:* Средний Пиздец"
-            else:
-                results_text += f"🚨 *Результат по фазе {phase_name}:* Большой Пиздец"
-        else:
-            # Пройдено несколько фаз, но не все
-            results_text += f"📈 *Общий балл по пройденным фазам:* {total_score}/{completed_phases * 10}\n\n"
-            
-            avg_score = total_score / completed_phases if completed_phases > 0 else 0
-            if avg_score <= 3:
-                results_text += "✅ *Средний результат:* Маленький Пиздец эмоционального выгорания"
-            elif avg_score <= 6:
-                results_text += "⚠️ *Средний результат:* Средний Пиздец эмоционального выгорания"
-            else:
-                results_text += "🚨 *Средний результат:* Большой Пиздец эмоционального выгорания"
+        results_text += "🚨 *Общий результат:* Большой Пиздец эмоционального выгорания"
     
     results_text += "\n\n💡 *Рекомендации:*\n"
     
