@@ -1,5 +1,6 @@
 import logging
 import os
+import json
 from datetime import datetime, timedelta
 from collections import defaultdict
 from dotenv import load_dotenv
@@ -81,32 +82,91 @@ stats_data = {
     'completed_tests': 0,
     'test_results': defaultdict(int),  # Уровни выгорания
     'daily_stats': defaultdict(int),   # Статистика по дням
-    'user_sessions': defaultdict(list) # Сессии пользователей
+    'user_sessions': defaultdict(list), # Сессии пользователей
+    'user_logins': {}  # Логины пользователей (username, first_name, last_name)
 }
+
+def save_stats_to_file():
+    """Сохранение статистики в JSON файл"""
+    try:
+        # Конвертируем defaultdict в обычные dict для JSON
+        stats_to_save = {
+            'total_users': stats_data['total_users'],
+            'completed_tests': stats_data['completed_tests'],
+            'test_results': dict(stats_data['test_results']),
+            'daily_stats': dict(stats_data['daily_stats']),
+            'user_sessions': dict(stats_data['user_sessions']),
+            'user_logins': stats_data['user_logins'],
+            'last_updated': datetime.now().isoformat()
+        }
+        
+        with open('stats.json', 'w', encoding='utf-8') as f:
+            json.dump(stats_to_save, f, ensure_ascii=False, indent=2, default=str)
+        
+        logger.info("Статистика сохранена в файл stats.json")
+    except Exception as e:
+        logger.error(f"Ошибка при сохранении статистики: {e}")
+
+def load_stats_from_file():
+    """Загрузка статистики из JSON файла"""
+    try:
+        with open('stats.json', 'r', encoding='utf-8') as f:
+            loaded_data = json.load(f)
+        
+        # Восстанавливаем структуру данных
+        stats_data['total_users'] = loaded_data.get('total_users', 0)
+        stats_data['completed_tests'] = loaded_data.get('completed_tests', 0)
+        stats_data['test_results'] = defaultdict(int, loaded_data.get('test_results', {}))
+        stats_data['daily_stats'] = defaultdict(int, loaded_data.get('daily_stats', {}))
+        stats_data['user_sessions'] = defaultdict(list, loaded_data.get('user_sessions', {}))
+        stats_data['user_logins'] = loaded_data.get('user_logins', {})
+        
+        logger.info("Статистика загружена из файла stats.json")
+    except FileNotFoundError:
+        logger.info("Файл stats.json не найден, используется пустая статистика")
+    except Exception as e:
+        logger.error(f"Ошибка при загрузке статистики: {e}")
+
+# Загружаем статистику при запуске
+load_stats_from_file()
 
 # ID администратора (ваш ID)
 ADMIN_ID = 156568560  # Замените на ваш ID
 
-def update_stats(user_id: int, action: str, data: dict = None):
+def update_stats(user_id: int, action: str, data: dict = None, user_info: dict = None):
     """Обновление статистики"""
     today = datetime.now().strftime('%Y-%m-%d')
     
     # Увеличиваем счетчик действий
     stats_data['daily_stats'][today] += 1
     
+    # Сохраняем информацию о пользователе при первом взаимодействии
+    if user_info and str(user_id) not in stats_data['user_logins']:
+        stats_data['user_logins'][str(user_id)] = {
+            'username': user_info.get('username'),
+            'first_name': user_info.get('first_name'),
+            'last_name': user_info.get('last_name'),
+            'first_seen': datetime.now().isoformat()
+        }
+        stats_data['total_users'] = len(stats_data['user_logins'])
+    
     # Записываем сессию пользователя
     session_data = {
-        'timestamp': datetime.now(),
+        'timestamp': datetime.now().isoformat(),
         'action': action,
         'data': data
     }
-    stats_data['user_sessions'][user_id].append(session_data)
+    stats_data['user_sessions'][str(user_id)].append(session_data)
     
     # Если это завершение теста, обновляем статистику результатов
     if action == 'test_completed' and data:
         stats_data['completed_tests'] += 1
         level = data.get('level', 'unknown')
         stats_data['test_results'][level] += 1
+    
+    # Сохраняем статистику в файл каждые 10 действий или при завершении теста
+    if action == 'test_completed' or stats_data['daily_stats'][today] % 10 == 0:
+        save_stats_to_file()
 
 async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Команда статистики (только для администратора)"""
@@ -125,7 +185,7 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     
     # Общая статистика
     total_actions = sum(stats_data['daily_stats'].values())
-    total_users = len(stats_data['user_sessions'])
+    total_users = len(stats_data['user_logins'])
     completed_tests = stats_data['completed_tests']
     
     stats_text += f"🎯 *Общие показатели:*\n"
@@ -179,6 +239,24 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         count = stats_data['daily_stats'].get(date, 0)
         day_name = (today - timedelta(days=i)).strftime('%d.%m')
         stats_text += f"• {day_name}: {count} действий\n"
+    
+    # Информация о пользователях
+    stats_text += "\n👥 *Последние пользователи:*\n"
+    recent_users = []
+    for user_id, user_info in stats_data['user_logins'].items():
+        if user_info.get('first_seen'):
+            recent_users.append((user_info['first_seen'], user_id, user_info))
+    
+    # Сортируем по времени первого появления (новые сверху)
+    recent_users.sort(key=lambda x: x[0], reverse=True)
+    
+    for i, (first_seen, user_id, user_info) in enumerate(recent_users[:10]):  # Показываем последние 10
+        username = user_info.get('username', 'Нет username')
+        first_name = user_info.get('first_name', '')
+        last_name = user_info.get('last_name', '')
+        full_name = f"{first_name} {last_name}".strip() or "Не указано"
+        
+        stats_text += f"• @{username} ({full_name})\n"
     
     # Последние активности
     stats_text += "\n🕐 *Последние активности:*\n"
@@ -404,7 +482,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     logger.info(f"User ID: {user_id}")
     
     # Обновляем статистику
-    update_stats(user_id, 'start_command')
+    user_info = {
+        'username': update.effective_user.username,
+        'first_name': update.effective_user.first_name,
+        'last_name': update.effective_user.last_name
+    }
+    update_stats(user_id, 'start_command', user_info=user_info)
     
     # Очищаем предыдущие ответы и данные пользователя
     if user_id in user_answers:
@@ -487,8 +570,7 @@ async def start_phase_selection(update: Update, context: ContextTypes.DEFAULT_TY
                 context.user_data['selected_test'] = "full_test"
                 
                 intro = (
-                    "Напиши свое Фамилию и Имя, они нужны для генерации персонализированного подарка тебе за прохождение теста.\n"
-                    "Мы не собираем и не храним твои данные.\n\n"
+                    "Напиши свое Фамилию и Имя, они нужны для генерации персонализированного подарка тебе за прохождение теста.\n\n"
                     "Пожалуйста, введи Фамилию и Имя (например: Иванов Иван):"
                 )
                 await query.edit_message_text(intro)
@@ -757,11 +839,16 @@ async def show_results(update: Update, context: ContextTypes.DEFAULT_TYPE, gener
     # Обновляем статистику завершения теста
     if is_full_test:
         level_name = "Маленький Пиздец" if total_score <= 15 else "Средний Пиздец" if total_score <= 20 else "Большой Пиздец"
+        user_info = {
+            'username': update.effective_user.username,
+            'first_name': update.effective_user.first_name,
+            'last_name': update.effective_user.last_name
+        }
         update_stats(user_id, 'test_completed', {
             'level': level_name,
             'total_score': total_score,
             'completed_phases': completed_phases
-        })
+        }, user_info=user_info)
     
     # Определяем общий уровень для рекомендаций
     if is_full_test and completed_phases == 3:
