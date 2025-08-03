@@ -317,6 +317,129 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         stats_text_plain = stats_text.replace('*', '').replace('_', '')
         await update.message.reply_text(stats_text_plain)
 
+async def stats_json_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Команда для получения JSON файла со статистикой (только для администратора)"""
+    user_id = update.effective_user.id
+    
+    # Проверяем, является ли пользователь администратором
+    if user_id != ADMIN_ID:
+        await update.message.reply_text("❌ У вас нет доступа к этой команде.")
+        return
+    
+    try:
+        # Сохраняем текущую статистику в файл
+        save_stats_to_file()
+        
+        # Отправляем JSON файл
+        with open('stats.json', 'rb') as f:
+            await update.message.reply_document(
+                document=f,
+                filename=f'stats_{datetime.now().strftime("%Y%m%d_%H%M%S")}.json',
+                caption="📊 JSON файл со статистикой бота"
+            )
+        
+        logger.info(f"Администратор {user_id} скачал JSON статистику")
+        
+    except Exception as e:
+        logger.error(f"Ошибка при отправке JSON статистики: {e}")
+        await update.message.reply_text("❌ Ошибка при создании JSON файла.")
+
+async def user_info_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Команда для получения информации о пользователе (только для администратора)"""
+    user_id = update.effective_user.id
+    
+    # Проверяем, является ли пользователь администратором
+    if user_id != ADMIN_ID:
+        await update.message.reply_text("❌ У вас нет доступа к этой команде.")
+        return
+    
+    # Проверяем, есть ли аргумент с ID пользователя
+    if not context.args:
+        await update.message.reply_text(
+            "📋 Использование: /user_info <ID_пользователя>\n"
+            "Пример: /user_info 123456789"
+        )
+        return
+    
+    try:
+        target_user_id = int(context.args[0])
+        
+        # Получаем информацию о пользователе
+        user_info = stats_data['user_logins'].get(str(target_user_id))
+        user_sessions = stats_data['user_sessions'].get(str(target_user_id), [])
+        
+        if not user_info and not user_sessions:
+            await update.message.reply_text(f"❌ Пользователь {target_user_id} не найден в статистике.")
+            return
+        
+        # Формируем информацию о пользователе
+        info_text = f"👤 *Информация о пользователе {target_user_id}*\n\n"
+        
+        if user_info:
+            username = user_info.get('username', 'Нет username')
+            first_name = user_info.get('first_name', '')
+            last_name = user_info.get('last_name', '')
+            full_name = f"{first_name} {last_name}".strip() or "Не указано"
+            first_seen = parse_datetime_string(user_info.get('first_seen', ''))
+            
+            info_text += f"📝 *Основная информация:*\n"
+            info_text += f"• Username: @{username}\n"
+            info_text += f"• Имя: {full_name}\n"
+            if isinstance(first_seen, datetime):
+                info_text += f"• Первый визит: {first_seen.strftime('%d.%m.%Y %H:%M')}\n"
+            info_text += "\n"
+        
+        # Анализируем сессии пользователя
+        if user_sessions:
+            info_text += f"📊 *Активность:*\n"
+            info_text += f"• Всего действий: {len(user_sessions)}\n"
+            
+            # Ищем завершенные тесты
+            completed_tests = []
+            for session in user_sessions:
+                if isinstance(session, dict) and session.get('action') == 'test_completed':
+                    data = session.get('data', {})
+                    if data:
+                        completed_tests.append({
+                            'level': data.get('level', 'Неизвестно'),
+                            'score': data.get('total_score', 0),
+                            'timestamp': parse_datetime_string(session.get('timestamp', ''))
+                        })
+            
+            if completed_tests:
+                info_text += f"• Завершенных тестов: {len(completed_tests)}\n\n"
+                info_text += f"🔥 *Результаты тестов:*\n"
+                for i, test in enumerate(completed_tests, 1):
+                    timestamp = test['timestamp']
+                    time_str = timestamp.strftime('%d.%m %H:%M') if isinstance(timestamp, datetime) else 'Неизвестно'
+                    info_text += f"{i}. {test['level']} ({test['score']}/30) - {time_str}\n"
+            else:
+                info_text += "• Завершенных тестов: 0\n"
+            
+            # Последние действия
+            recent_actions = []
+            for session in user_sessions:
+                if isinstance(session, dict) and 'timestamp' in session:
+                    timestamp = parse_datetime_string(session['timestamp'])
+                    action = session.get('action', 'unknown')
+                    recent_actions.append((timestamp, action))
+            
+            recent_actions.sort(key=lambda x: x[0], reverse=True)
+            
+            if recent_actions:
+                info_text += f"\n🕐 *Последние действия:*\n"
+                for timestamp, action in recent_actions[:5]:
+                    time_str = timestamp.strftime('%H:%M') if isinstance(timestamp, datetime) else 'Неизвестно'
+                    info_text += f"• {time_str} - {action}\n"
+        
+        await update.message.reply_text(info_text, parse_mode='Markdown')
+        
+    except ValueError:
+        await update.message.reply_text("❌ Неверный формат ID пользователя. Используйте число.")
+    except Exception as e:
+        logger.error(f"Ошибка при получении информации о пользователе: {e}")
+        await update.message.reply_text("❌ Ошибка при получении информации о пользователе.")
+
 async def check_subscription(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
     """Проверка подписки пользователя на канал"""
     # Если проверка отключена, возвращаем True
@@ -1120,6 +1243,8 @@ async def back_to_results(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Команда помощи"""
+    user_id = update.effective_user.id
+    
     help_text = """
 🤖 *Команды бота:*
 
@@ -1133,6 +1258,16 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 4. Получите подробную интерпретацию результатов
 
 💡 *Важно:* Отвечайте честно, как вы действительно себя чувствуете в последнее время.
+"""
+    
+    # Добавляем административные команды только для администратора
+    if user_id == ADMIN_ID:
+        help_text += """
+
+🔧 *Административные команды:*
+/stats - Показать статистику бота
+/stats_json - Скачать JSON файл со статистикой
+/user_info <ID> - Информация о конкретном пользователе
 """
     
     await update.message.reply_text(help_text, parse_mode='Markdown')
@@ -1253,6 +1388,8 @@ def main() -> None:
     application.add_handler(conv_handler)
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("stats", stats_command))
+    application.add_handler(CommandHandler("stats_json", stats_json_command))
+    application.add_handler(CommandHandler("user_info", user_info_command))
     application.add_error_handler(error_handler)
     
     # Запускаем бота
