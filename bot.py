@@ -843,7 +843,7 @@ async def show_results(update: Update, context: ContextTypes.DEFAULT_TYPE, gener
             if is_full_test and completed_phases == 3:
                 if total_score <= 15:
                     level = "Маленький Пиздец"
-                elif total_score <= 25:
+                elif total_score <= 20:
                     level = "Средний Пиздец"
                 else:
                     level = "Большой Пиздец"
