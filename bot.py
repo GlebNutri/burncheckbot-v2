@@ -81,9 +81,7 @@ stats_data = {
     'total_users': 0,
     'completed_tests': 0,
     'test_results': defaultdict(int),  # Уровни выгорания
-    'daily_stats': defaultdict(int),   # Статистика по дням
-    'user_sessions': defaultdict(list), # Сессии пользователей
-    'user_logins': {}  # Логины пользователей (username, first_name, last_name)
+    'users': {}  # Пользователи с их результатами тестов
 }
 
 def save_stats_to_file():
@@ -94,9 +92,7 @@ def save_stats_to_file():
             'total_users': stats_data['total_users'],
             'completed_tests': stats_data['completed_tests'],
             'test_results': dict(stats_data['test_results']),
-            'daily_stats': dict(stats_data['daily_stats']),
-            'user_sessions': dict(stats_data['user_sessions']),
-            'user_logins': stats_data['user_logins'],
+            'users': stats_data['users'],
             'last_updated': datetime.now().isoformat()
         }
         
@@ -126,24 +122,7 @@ def load_stats_from_file():
         stats_data['total_users'] = loaded_data.get('total_users', 0)
         stats_data['completed_tests'] = loaded_data.get('completed_tests', 0)
         stats_data['test_results'] = defaultdict(int, loaded_data.get('test_results', {}))
-        stats_data['daily_stats'] = defaultdict(int, loaded_data.get('daily_stats', {}))
-        
-        # Восстанавливаем сессии пользователей с конвертацией дат
-        user_sessions = defaultdict(list)
-        for user_id, sessions in loaded_data.get('user_sessions', {}).items():
-            for session in sessions:
-                if isinstance(session, dict) and 'timestamp' in session:
-                    session['timestamp'] = parse_datetime_string(session['timestamp'])
-                user_sessions[user_id].append(session)
-        stats_data['user_sessions'] = user_sessions
-        
-        # Восстанавливаем логины пользователей с конвертацией дат
-        user_logins = {}
-        for user_id, user_info in loaded_data.get('user_logins', {}).items():
-            if isinstance(user_info, dict) and 'first_seen' in user_info:
-                user_info['first_seen'] = parse_datetime_string(user_info['first_seen'])
-            user_logins[user_id] = user_info
-        stats_data['user_logins'] = user_logins
+        stats_data['users'] = loaded_data.get('users', {})
         
         logger.info("Статистика загружена из файла stats.json")
     except FileNotFoundError:
@@ -159,37 +138,36 @@ ADMIN_ID = 156568560  # Замените на ваш ID
 
 def update_stats(user_id: int, action: str, data: dict = None, user_info: dict = None):
     """Обновление статистики"""
-    today = datetime.now().strftime('%Y-%m-%d')
+    user_id_str = str(user_id)
     
-    # Увеличиваем счетчик действий
-    stats_data['daily_stats'][today] += 1
-    
-    # Сохраняем информацию о пользователе при первом взаимодействии
-    if user_info and str(user_id) not in stats_data['user_logins']:
-        stats_data['user_logins'][str(user_id)] = {
-            'username': user_info.get('username'),
-            'first_name': user_info.get('first_name'),
-            'last_name': user_info.get('last_name'),
-            'first_seen': datetime.now().isoformat()
-        }
-        stats_data['total_users'] = len(stats_data['user_logins'])
-    
-    # Записываем сессию пользователя
-    session_data = {
-        'timestamp': datetime.now().isoformat(),
-        'action': action,
-        'data': data
-    }
-    stats_data['user_sessions'][str(user_id)].append(session_data)
-    
-    # Если это завершение теста, обновляем статистику результатов
+    # Если это завершение теста, сохраняем результат
     if action == 'test_completed' and data:
         stats_data['completed_tests'] += 1
         level = data.get('level', 'unknown')
         stats_data['test_results'][level] += 1
-    
-    # Сохраняем статистику в файл каждые 10 действий или при завершении теста
-    if action == 'test_completed' or stats_data['daily_stats'][today] % 10 == 0:
+        
+        # Сохраняем информацию о пользователе и результате теста
+        if user_id_str not in stats_data['users']:
+            stats_data['users'][user_id_str] = {
+                'username': user_info.get('username') if user_info else None,
+                'first_name': user_info.get('first_name') if user_info else None,
+                'last_name': user_info.get('last_name') if user_info else None,
+                'test_date': datetime.now().isoformat(),
+                'test_result': {
+                    'level': level,
+                    'score': data.get('total_score', 0)
+                }
+            }
+            stats_data['total_users'] = len(stats_data['users'])
+        else:
+            # Обновляем результат теста
+            stats_data['users'][user_id_str]['test_result'] = {
+                'level': level,
+                'score': data.get('total_score', 0)
+            }
+            stats_data['users'][user_id_str]['test_date'] = datetime.now().isoformat()
+        
+        # Сохраняем статистику в файл
         save_stats_to_file()
 
 async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -208,19 +186,12 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     stats_text = "📊 *Общая статистика бота*\n\n"
     
     # Общая статистика
-    total_actions = sum(stats_data['daily_stats'].values())
-    total_users = len(stats_data['user_logins'])
+    total_users = len(stats_data['users'])
     completed_tests = stats_data['completed_tests']
     
     stats_text += f"🎯 *Общие показатели:*\n"
-    stats_text += f"• Всего действий: {total_actions}\n"
     stats_text += f"• Уникальных пользователей: {total_users}\n"
     stats_text += f"• Завершенных тестов: {completed_tests}\n"
-    
-    # Процент завершения тестов
-    if total_users > 0:
-        completion_rate = (completed_tests / total_users) * 100
-        stats_text += f"• Процент завершения: {completion_rate:.1f}%\n"
     
 
     
@@ -256,58 +227,34 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             stats_text += f"\n📈 *Средний уровень выгорания:* {avg_level_name}\n"
             stats_text += f"📊 *Средний балл:* {avg_level:.2f}/3.00\n"
     
-    # Статистика по дням
-    stats_text += "\n📅 *Активность за последние 7 дней:*\n"
-    for i in range(7):
-        date = (today - timedelta(days=i)).strftime('%Y-%m-%d')
-        count = stats_data['daily_stats'].get(date, 0)
-        day_name = (today - timedelta(days=i)).strftime('%d.%m')
-        stats_text += f"• {day_name}: {count} действий\n"
-    
     # Информация о пользователях
     stats_text += "\n👥 *Последние пользователи:*\n"
     recent_users = []
-    for user_id, user_info in stats_data['user_logins'].items():
-        if user_info.get('first_seen'):
-            # Убеждаемся, что first_seen - это datetime объект
-            first_seen = parse_datetime_string(user_info['first_seen'])
-            recent_users.append((first_seen, user_id, user_info))
+    for user_id, user_data in stats_data['users'].items():
+        if user_data.get('test_date'):
+            # Убеждаемся, что test_date - это datetime объект
+            test_date = parse_datetime_string(user_data['test_date'])
+            recent_users.append((test_date, user_id, user_data))
     
-    # Сортируем по времени первого появления (новые сверху)
+    # Сортируем по времени прохождения теста (новые сверху)
     recent_users.sort(key=lambda x: x[0], reverse=True)
     
-    for i, (first_seen, user_id, user_info) in enumerate(recent_users[:10]):  # Показываем последние 10
-        username = user_info.get('username', 'Нет username')
-        first_name = user_info.get('first_name', '')
-        last_name = user_info.get('last_name', '')
+    for i, (test_date, user_id, user_data) in enumerate(recent_users[:10]):  # Показываем последние 10
+        username = user_data.get('username', 'Нет username')
+        first_name = user_data.get('first_name', '')
+        last_name = user_data.get('last_name', '')
         full_name = f"{first_name} {last_name}".strip() or "Не указано"
+        test_result = user_data.get('test_result', {})
+        level = test_result.get('level', 'Неизвестно')
+        score = test_result.get('score', 0)
         
         # Форматируем дату для отображения
-        if isinstance(first_seen, datetime):
-            date_str = first_seen.strftime('%d.%m %H:%M')
+        if isinstance(test_date, datetime):
+            date_str = test_date.strftime('%d.%m %H:%M')
         else:
             date_str = "Неизвестно"
         
-        stats_text += f"• @{username} ({full_name}) - {date_str}\n"
-    
-    # Последние активности
-    stats_text += "\n🕐 *Последние активности:*\n"
-    recent_sessions = []
-    for user_id, sessions in stats_data['user_sessions'].items():
-        if sessions:
-            for session in sessions:
-                if isinstance(session, dict) and 'timestamp' in session:
-                    # Убеждаемся, что timestamp - это datetime объект
-                    timestamp = parse_datetime_string(session['timestamp'])
-                    recent_sessions.append((timestamp, user_id, session.get('action', 'unknown')))
-    
-    # Сортируем по времени и берем последние 5
-    recent_sessions.sort(key=lambda x: x[0], reverse=True)
-    for timestamp, user_id, action in recent_sessions[:5]:
-        time_str = timestamp.strftime('%H:%M')
-        # Экранируем потенциально проблемные символы в action
-        safe_action = action.replace('*', '\\*').replace('_', '\\_')
-        stats_text += f"• {time_str} - Пользователь {user_id}: {safe_action}\n"
+        stats_text += f"• @{username} ({full_name}) - {level} ({score}/30) - {date_str}\n"
     
     try:
         await update.message.reply_text(stats_text, parse_mode='Markdown')
@@ -365,72 +312,38 @@ async def user_info_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         target_user_id = int(context.args[0])
         
         # Получаем информацию о пользователе
-        user_info = stats_data['user_logins'].get(str(target_user_id))
-        user_sessions = stats_data['user_sessions'].get(str(target_user_id), [])
+        user_data = stats_data['users'].get(str(target_user_id))
         
-        if not user_info and not user_sessions:
+        if not user_data:
             await update.message.reply_text(f"❌ Пользователь {target_user_id} не найден в статистике.")
             return
         
         # Формируем информацию о пользователе
         info_text = f"👤 *Информация о пользователе {target_user_id}*\n\n"
         
-        if user_info:
-            username = user_info.get('username', 'Нет username')
-            first_name = user_info.get('first_name', '')
-            last_name = user_info.get('last_name', '')
-            full_name = f"{first_name} {last_name}".strip() or "Не указано"
-            first_seen = parse_datetime_string(user_info.get('first_seen', ''))
-            
-            info_text += f"📝 *Основная информация:*\n"
-            info_text += f"• Username: @{username}\n"
-            info_text += f"• Имя: {full_name}\n"
-            if isinstance(first_seen, datetime):
-                info_text += f"• Первый визит: {first_seen.strftime('%d.%m.%Y %H:%M')}\n"
-            info_text += "\n"
+        # Основная информация
+        username = user_data.get('username', 'Нет username')
+        first_name = user_data.get('first_name', '')
+        last_name = user_data.get('last_name', '')
+        full_name = f"{first_name} {last_name}".strip() or "Не указано"
+        test_date = parse_datetime_string(user_data.get('test_date', ''))
         
-        # Анализируем сессии пользователя
-        if user_sessions:
-            info_text += f"📊 *Активность:*\n"
-            info_text += f"• Всего действий: {len(user_sessions)}\n"
+        info_text += f"📝 *Основная информация:*\n"
+        info_text += f"• Username: @{username}\n"
+        info_text += f"• Имя: {full_name}\n"
+        if isinstance(test_date, datetime):
+            info_text += f"• Дата прохождения теста: {test_date.strftime('%d.%m.%Y %H:%M')}\n"
+        info_text += "\n"
+        
+        # Результат теста
+        test_result = user_data.get('test_result', {})
+        if test_result:
+            level = test_result.get('level', 'Неизвестно')
+            score = test_result.get('score', 0)
             
-            # Ищем завершенные тесты
-            completed_tests = []
-            for session in user_sessions:
-                if isinstance(session, dict) and session.get('action') == 'test_completed':
-                    data = session.get('data', {})
-                    if data:
-                        completed_tests.append({
-                            'level': data.get('level', 'Неизвестно'),
-                            'score': data.get('total_score', 0),
-                            'timestamp': parse_datetime_string(session.get('timestamp', ''))
-                        })
-            
-            if completed_tests:
-                info_text += f"• Завершенных тестов: {len(completed_tests)}\n\n"
-                info_text += f"🔥 *Результаты тестов:*\n"
-                for i, test in enumerate(completed_tests, 1):
-                    timestamp = test['timestamp']
-                    time_str = timestamp.strftime('%d.%m %H:%M') if isinstance(timestamp, datetime) else 'Неизвестно'
-                    info_text += f"{i}. {test['level']} ({test['score']}/30) - {time_str}\n"
-            else:
-                info_text += "• Завершенных тестов: 0\n"
-            
-            # Последние действия
-            recent_actions = []
-            for session in user_sessions:
-                if isinstance(session, dict) and 'timestamp' in session:
-                    timestamp = parse_datetime_string(session['timestamp'])
-                    action = session.get('action', 'unknown')
-                    recent_actions.append((timestamp, action))
-            
-            recent_actions.sort(key=lambda x: x[0], reverse=True)
-            
-            if recent_actions:
-                info_text += f"\n🕐 *Последние действия:*\n"
-                for timestamp, action in recent_actions[:5]:
-                    time_str = timestamp.strftime('%H:%M') if isinstance(timestamp, datetime) else 'Неизвестно'
-                    info_text += f"• {time_str} - {action}\n"
+            info_text += f"🔥 *Результат теста:*\n"
+            info_text += f"• Уровень выгорания: {level}\n"
+            info_text += f"• Балл: {score}/30\n"
         
         await update.message.reply_text(info_text, parse_mode='Markdown')
         
