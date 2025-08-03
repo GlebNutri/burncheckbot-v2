@@ -107,6 +107,15 @@ def save_stats_to_file():
     except Exception as e:
         logger.error(f"Ошибка при сохранении статистики: {e}")
 
+def parse_datetime_string(dt_string):
+    """Конвертация строки даты в datetime объект"""
+    try:
+        if isinstance(dt_string, str):
+            return datetime.fromisoformat(dt_string.replace('Z', '+00:00'))
+        return dt_string
+    except:
+        return datetime.now()
+
 def load_stats_from_file():
     """Загрузка статистики из JSON файла"""
     try:
@@ -118,8 +127,23 @@ def load_stats_from_file():
         stats_data['completed_tests'] = loaded_data.get('completed_tests', 0)
         stats_data['test_results'] = defaultdict(int, loaded_data.get('test_results', {}))
         stats_data['daily_stats'] = defaultdict(int, loaded_data.get('daily_stats', {}))
-        stats_data['user_sessions'] = defaultdict(list, loaded_data.get('user_sessions', {}))
-        stats_data['user_logins'] = loaded_data.get('user_logins', {})
+        
+        # Восстанавливаем сессии пользователей с конвертацией дат
+        user_sessions = defaultdict(list)
+        for user_id, sessions in loaded_data.get('user_sessions', {}).items():
+            for session in sessions:
+                if isinstance(session, dict) and 'timestamp' in session:
+                    session['timestamp'] = parse_datetime_string(session['timestamp'])
+                user_sessions[user_id].append(session)
+        stats_data['user_sessions'] = user_sessions
+        
+        # Восстанавливаем логины пользователей с конвертацией дат
+        user_logins = {}
+        for user_id, user_info in loaded_data.get('user_logins', {}).items():
+            if isinstance(user_info, dict) and 'first_seen' in user_info:
+                user_info['first_seen'] = parse_datetime_string(user_info['first_seen'])
+            user_logins[user_id] = user_info
+        stats_data['user_logins'] = user_logins
         
         logger.info("Статистика загружена из файла stats.json")
     except FileNotFoundError:
@@ -245,7 +269,9 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     recent_users = []
     for user_id, user_info in stats_data['user_logins'].items():
         if user_info.get('first_seen'):
-            recent_users.append((user_info['first_seen'], user_id, user_info))
+            # Убеждаемся, что first_seen - это datetime объект
+            first_seen = parse_datetime_string(user_info['first_seen'])
+            recent_users.append((first_seen, user_id, user_info))
     
     # Сортируем по времени первого появления (новые сверху)
     recent_users.sort(key=lambda x: x[0], reverse=True)
@@ -256,14 +282,24 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         last_name = user_info.get('last_name', '')
         full_name = f"{first_name} {last_name}".strip() or "Не указано"
         
-        stats_text += f"• @{username} ({full_name})\n"
+        # Форматируем дату для отображения
+        if isinstance(first_seen, datetime):
+            date_str = first_seen.strftime('%d.%m %H:%M')
+        else:
+            date_str = "Неизвестно"
+        
+        stats_text += f"• @{username} ({full_name}) - {date_str}\n"
     
     # Последние активности
     stats_text += "\n🕐 *Последние активности:*\n"
     recent_sessions = []
     for user_id, sessions in stats_data['user_sessions'].items():
         if sessions:
-            recent_sessions.extend([(s['timestamp'], user_id, s['action']) for s in sessions])
+            for session in sessions:
+                if isinstance(session, dict) and 'timestamp' in session:
+                    # Убеждаемся, что timestamp - это datetime объект
+                    timestamp = parse_datetime_string(session['timestamp'])
+                    recent_sessions.append((timestamp, user_id, session.get('action', 'unknown')))
     
     # Сортируем по времени и берем последние 5
     recent_sessions.sort(key=lambda x: x[0], reverse=True)
